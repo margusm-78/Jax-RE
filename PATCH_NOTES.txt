@@ -1,0 +1,8 @@
+Patch notes:
+- Fix: Added required `description` fields to input schema properties (e.g., limitPerSource).
+- Fix: `.actor/actor.json` now points to `INPUT_SCHEMA.json` (not `../INPUT_SCHEMA.json`).
+- Fix: README typo (`a pify`) corrected to `apify`.
+
+Run examples:
+apify run --input '{"phase":"discover","city":"Jacksonville, FL"}'
+apify run --input '{"phase":"enrich","city":"Jacksonville, FL"}'

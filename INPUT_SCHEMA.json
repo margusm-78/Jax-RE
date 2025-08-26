@@ -12,21 +12,22 @@
       ],
       "editor": "select",
       "default": "discover",
-      "description": "Phase 1 discover agent names; Phase 2 enrich phones & emails for found names."
+      "description": "Choose discovery of names (Phase 1) or enrichment of contacts (Phase 2)."
     },
     "city": {
       "title": "City/Market",
       "type": "string",
       "editor": "textfield",
       "default": "Jacksonville, FL",
-      "description": "Target market to filter & query."
+      "description": "Target market to filter results and seed web queries."
     },
     "limitPerSource": {
       "title": "Max agents per source",
       "type": "integer",
       "editor": "number",
       "default": 250,
-      "minimum": 10
+      "minimum": 10,
+      "description": "Soft cap of names to collect from each directory in Phase 1."
     },
     "sources": {
       "title": "Site adapters",
@@ -38,38 +39,40 @@
         "coldwellbanker",
         "compass"
       ],
-      "description": "Which directories to crawl in Phase 1."
+      "description": "Which directories to crawl during discovery (Phase 1)."
     },
     "datasetNamePhase1": {
       "title": "Dataset name for Phase 1 (optional)",
       "type": "string",
       "editor": "textfield",
-      "default": "jacksonville-realtors-phase1"
+      "default": "jacksonville-realtors-phase1",
+      "description": "Dataset name tag used for Phase 1 results (names)."
     },
     "namesCsvUrl": {
       "title": "Names CSV for Phase 2 (optional)",
       "type": "string",
       "editor": "textfield",
-      "description": "If provided, Phase 2 will read names from this CSV URL instead of Phase 1 dataset. One name per row or column header 'name'."
+      "description": "Public CSV URL with a 'name' column or one name per line for enrichment."
     },
     "bingApiKey": {
       "title": "Bing Web Search API key (optional)",
       "type": "string",
       "editor": "textfield",
-      "description": "Speeds up Phase 2 search. If omitted, actor uses lightweight on-page searches without paid APIs."
+      "description": "Optional key to speed up Phase 2 searches (actor works without it)."
     },
     "maxPagesPerName": {
       "title": "Max result pages to visit per name",
       "type": "integer",
       "editor": "number",
       "default": 6,
-      "minimum": 1
+      "minimum": 1,
+      "description": "Safety cap for the number of pages to follow for each name in Phase 2."
     },
     "proxyGroups": {
       "title": "Apify proxy groups (optional)",
       "type": "array",
       "editor": "stringList",
-      "description": "e.g., SHADER, RESIDENTIAL. Leave empty to run without proxy."
+      "description": "e.g., RESIDENTIAL. Leave empty to run without proxy."
     }
   },
   "required": [
