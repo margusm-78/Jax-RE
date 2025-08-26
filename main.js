@@ -1,7 +1,8 @@
+
 import { Actor, log } from 'apify';
-import { PlaywrightCrawler, Dataset, RequestQueue, CheerioCrawler } from 'crawlee';
+import { CheerioCrawler, Dataset, RequestQueue } from 'crawlee';
 import * as cheerio from 'cheerio';
-import { EMAIL_RE, PHONE_RE, normalizePhone, dedupeBy, toTitleCase, splitName, toE164US } from './adapters/util.js';
+import { EMAIL_RE, PHONE_RE, normalizePhone, dedupeBy, toTitleCase } from './adapters/util.js';
 import { realtorSeeds, parseRealtorList } from './adapters/realtor.js';
 import { homesSeeds, parseHomesList } from './adapters/homes.js';
 import { coldwellSeeds, parseColdwell } from './adapters/coldwellbanker.js';
@@ -43,14 +44,14 @@ await Actor.main(async () => {
       }
     }
 
-    const crawler = new PlaywrightCrawler({
+    const crawler = new CheerioCrawler({
       requestQueue: q,
-      maxConcurrency: 2,
-      navigationTimeoutSecs: 45,
+      maxConcurrency: 3,
+      requestHandlerTimeoutSecs: 60,
       ...(proxyConfiguration ? { proxyConfiguration } : {}),
-      async requestHandler({ request, page }) {
-        const html = await page.content();
-        const $ = cheerio.load(html);
+      async requestHandler({ request, body }) {
+        // Use cheerio directly on body for speed/reliability
+        const $ = cheerio.load(body || '');
         let rows = [];
         if (request.label === 'REALTOR_LIST') rows = SOURCE_MAP.realtor.parse($);
         if (request.label === 'HOMES_LIST') rows = SOURCE_MAP.homes.parse($);
@@ -59,6 +60,9 @@ await Actor.main(async () => {
         for (const r of rows) await Dataset.pushData({ name: r.name, city, source: r.source });
         log.info(`Parsed ${rows.length} agents from ${request.url}`);
       },
+      failedRequestHandler({ request }) {
+        log.warning(`Failed to fetch: ${request.url}`);
+      }
     });
 
     await crawler.run();
@@ -102,12 +106,14 @@ await Actor.main(async () => {
       requestQueue: enrichQueue,
       maxConcurrency: 5,
       ...(proxyConfiguration ? { proxyConfiguration } : {}),
-      async requestHandler({ request, $, enqueueLinks }) {
-        const { person } = request.userData;
-        const pageText = $('body').text();
+      async requestHandler({ request, $ , enqueueLinks, body }) {
+        // Ensure $ exists even if auto-parsing failed
+        const _$ = $ || cheerio.load(body || '');
+        const pageText = _$('#root').text() + ' ' + _$('#__next').text() + ' ' + _$('.content').text() + ' ' + _$('.main').text() + ' ' + _$('body').text();
         const emails = [...new Set((pageText.match(EMAIL_RE) || []).map((e) => e.toLowerCase()))];
         const phones = [...new Set((pageText.match(PHONE_RE) || []).map((m) => normalizePhone(m)))].filter(Boolean);
 
+        const { person } = request.userData;
         if (emails.length || phones.length) {
           await Dataset.pushData({
             name: toTitleCase(person),
@@ -119,8 +125,8 @@ await Actor.main(async () => {
 
         if (isSearchUrl(request.url)) {
           const hrefs = [];
-          $('a').each((_, a) => {
-            const href = $(a).attr('href');
+          _$('a').each((_, a) => {
+            const href = _$(a).attr('href');
             if (!href) return;
             const u = absolutize(request.url, href);
             if (!u) return;
@@ -143,15 +149,16 @@ await Actor.main(async () => {
 
     if (brevoExport) {
       const brevoRows = consolidated.map((r) => {
-        const { first, last } = splitName(r.name || '');
+        const [first, ...last] = String(r.name || '').trim().split(/\s+/);
         return {
           EMAIL: (r.email || '').toLowerCase(),
           SMS: toE164US(r.phone || ''),
-          FIRSTNAME: first,
-          LASTNAME: last,
+          FIRSTNAME: first || '',
+          LASTNAME: last.join(' ') || '',
+          SOURCEURL: r.sourceUrl || ''
         };
       });
-      const brevoCsv = toCsv(brevoRows, ['EMAIL', 'SMS', 'FIRSTNAME', 'LASTNAME']);
+      const brevoCsv = toCsv(brevoRows, ['EMAIL', 'SMS', 'FIRSTNAME', 'LASTNAME', 'SOURCEURL']);
       await Actor.setValue(brevoFileName, brevoCsv, { contentType: 'text/csv' });
       log.info(`Brevo CSV written: ${brevoFileName} (${brevoRows.length} rows)`);
     }
@@ -226,3 +233,4 @@ function absolutize(base, href) {
     return null;
   }
 }
+
