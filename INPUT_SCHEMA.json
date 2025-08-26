@@ -12,37 +12,81 @@
       ],
       "editor": "select",
       "default": "discover",
-      "description": "Choose which phase to run: discover names or enrich with contact info."
+      "description": "Choose discovery of names (Phase 1) or enrichment with phones/emails (Phase 2)."
     },
     "city": {
-      "title": "City",
+      "title": "City/Market",
       "type": "string",
+      "editor": "textfield",
       "default": "Jacksonville, FL",
-      "description": "Target market/city for Realtor search and enrichment."
+      "description": "Target market used for filtering and web queries."
     },
     "limitPerSource": {
       "title": "Max agents per source",
       "type": "integer",
+      "editor": "number",
       "default": 250,
-      "description": "Soft cap on number of agents to fetch per directory."
+      "minimum": 10,
+      "description": "Soft cap on names to collect from each directory in Phase 1."
+    },
+    "sources": {
+      "title": "Site adapters",
+      "type": "array",
+      "editor": "stringList",
+      "default": [
+        "realtor",
+        "homes",
+        "coldwellbanker",
+        "compass"
+      ],
+      "description": "Which agent directories to crawl during Phase 1 (discover)."
+    },
+    "datasetNamePhase1": {
+      "title": "Dataset name for Phase 1 (optional)",
+      "type": "string",
+      "editor": "textfield",
+      "default": "jacksonville-realtors-phase1",
+      "description": "Dataset name tag for Phase 1 results (names JSON/CSV)."
+    },
+    "namesCsvUrl": {
+      "title": "Names CSV for Phase 2 (optional)",
+      "type": "string",
+      "editor": "textfield",
+      "description": "Public CSV URL for names (column 'name' or one name per line). Overrides Phase 1 output."
+    },
+    "bingApiKey": {
+      "title": "Bing Web Search API key (optional)",
+      "type": "string",
+      "editor": "textfield",
+      "description": "Optional key to speed up Phase 2 searching. Actor also works without it."
+    },
+    "maxPagesPerName": {
+      "title": "Max result pages per name",
+      "type": "integer",
+      "editor": "number",
+      "default": 6,
+      "minimum": 1,
+      "description": "Safety cap for how many pages to follow for each name during enrichment."
     },
     "proxyGroups": {
       "title": "Apify proxy groups (optional)",
       "type": "array",
       "editor": "stringList",
-      "description": "Leave empty to run without proxy."
+      "description": "For example RESIDENTIAL. Leave empty to run without proxies."
     },
     "brevoExport": {
-      "title": "Also export Brevo-formatted CSV (Phase 2)",
+      "title": "Also export Brevo CSV (Phase 2)",
       "type": "boolean",
+      "editor": "checkbox",
       "default": true,
-      "description": "If true, creates PHASE2_BREVO.csv with EMAIL, SMS, FIRSTNAME, LASTNAME."
+      "description": "If enabled, writes a Brevo-formatted CSV (EMAIL, SMS, FIRSTNAME, LASTNAME, SOURCEURL)."
     },
     "brevoFileName": {
-      "title": "Brevo CSV file name (optional)",
+      "title": "Brevo CSV file name",
       "type": "string",
+      "editor": "textfield",
       "default": "PHASE2_BREVO.csv",
-      "description": "Override default Brevo CSV file name."
+      "description": "Custom file name for the Brevo CSV output."
     }
   },
   "required": [
