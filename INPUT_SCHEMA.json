@@ -1,0 +1,78 @@
+{
+  "title": "Jacksonville Realtor Finder",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "phase": {
+      "title": "Phase",
+      "type": "string",
+      "enum": [
+        "discover",
+        "enrich"
+      ],
+      "editor": "select",
+      "default": "discover",
+      "description": "Phase 1 discover agent names; Phase 2 enrich phones & emails for found names."
+    },
+    "city": {
+      "title": "City/Market",
+      "type": "string",
+      "editor": "textfield",
+      "default": "Jacksonville, FL",
+      "description": "Target market to filter & query."
+    },
+    "limitPerSource": {
+      "title": "Max agents per source",
+      "type": "integer",
+      "editor": "number",
+      "default": 250,
+      "minimum": 10
+    },
+    "sources": {
+      "title": "Site adapters",
+      "type": "array",
+      "editor": "stringList",
+      "default": [
+        "realtor",
+        "homes",
+        "coldwellbanker",
+        "compass"
+      ],
+      "description": "Which directories to crawl in Phase 1."
+    },
+    "datasetNamePhase1": {
+      "title": "Dataset name for Phase 1 (optional)",
+      "type": "string",
+      "editor": "textfield",
+      "default": "jacksonville-realtors-phase1"
+    },
+    "namesCsvUrl": {
+      "title": "Names CSV for Phase 2 (optional)",
+      "type": "string",
+      "editor": "textfield",
+      "description": "If provided, Phase 2 will read names from this CSV URL instead of Phase 1 dataset. One name per row or column header 'name'."
+    },
+    "bingApiKey": {
+      "title": "Bing Web Search API key (optional)",
+      "type": "string",
+      "editor": "textfield",
+      "description": "Speeds up Phase 2 search. If omitted, actor uses lightweight on-page searches without paid APIs."
+    },
+    "maxPagesPerName": {
+      "title": "Max result pages to visit per name",
+      "type": "integer",
+      "editor": "number",
+      "default": 6,
+      "minimum": 1
+    },
+    "proxyGroups": {
+      "title": "Apify proxy groups (optional)",
+      "type": "array",
+      "editor": "stringList",
+      "description": "e.g., SHADER, RESIDENTIAL. Leave empty to run without proxy."
+    }
+  },
+  "required": [
+    "phase"
+  ]
+}

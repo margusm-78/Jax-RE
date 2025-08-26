@@ -1,0 +1,15 @@
+{
+  "name": "jacksonville-realtor-finder",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Apify actor: discover + enrich Jacksonville FL Realtors",
+  "scripts": {
+    "start": "node main.js"
+  },
+  "dependencies": {
+    "apify": "^3.1.10",
+    "crawlee": "^3.14.1",
+    "cheerio": "^1.0.0",
+    "linkify-it": "^5.0.0"
+  }
+}
