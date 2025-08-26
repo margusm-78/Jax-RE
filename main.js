@@ -1,7 +1,7 @@
 import { Actor, log } from 'apify';
 import { PlaywrightCrawler, Dataset, RequestQueue, CheerioCrawler } from 'crawlee';
 import * as cheerio from 'cheerio';
-import { EMAIL_RE, PHONE_RE, normalizePhone, dedupeBy, toTitleCase } from './adapters/util.js';
+import { EMAIL_RE, PHONE_RE, normalizePhone, dedupeBy, toTitleCase, splitName, toE164US } from './adapters/util.js';
 import { realtorSeeds, parseRealtorList } from './adapters/realtor.js';
 import { homesSeeds, parseHomesList } from './adapters/homes.js';
 import { coldwellSeeds, parseColdwell } from './adapters/coldwellbanker.js';
@@ -21,17 +21,17 @@ await Actor.main(async () => {
     city = 'Jacksonville, FL',
     limitPerSource = 250,
     sources = ['realtor', 'homes', 'coldwellbanker', 'compass'],
-    datasetNamePhase1 = 'jacksonville-realtors-phase1',
     namesCsvUrl,
-    bingApiKey,
     maxPagesPerName = 6,
-    proxyGroups = []
+    proxyGroups = [],
+    brevoExport = true,
+    brevoFileName = 'PHASE2_BREVO.csv',
   } = input || {};
 
   log.info(`Phase: ${phase}`);
   const proxyConfiguration = proxyGroups?.length
     ? await Actor.createProxyConfiguration({ groups: proxyGroups })
-    : null;
+    : undefined;
 
   if (phase === 'discover') {
     const q = await RequestQueue.open();
@@ -43,10 +43,11 @@ await Actor.main(async () => {
       }
     }
 
-    const crawlerOpts = {
+    const crawler = new PlaywrightCrawler({
       requestQueue: q,
       maxConcurrency: 2,
       navigationTimeoutSecs: 45,
+      ...(proxyConfiguration ? { proxyConfiguration } : {}),
       async requestHandler({ request, page }) {
         const html = await page.content();
         const $ = cheerio.load(html);
@@ -55,28 +56,17 @@ await Actor.main(async () => {
         if (request.label === 'HOMES_LIST') rows = SOURCE_MAP.homes.parse($);
         if (request.label === 'COLDWELL_LIST') rows = SOURCE_MAP.coldwellbanker.parse($);
         if (request.label === 'COMPASS_LIST') rows = SOURCE_MAP.compass.parse($);
-
-        for (const r of rows) {
-          await Dataset.pushData({ name: r.name, city, source: r.source });
-        }
-
+        for (const r of rows) await Dataset.pushData({ name: r.name, city, source: r.source });
         log.info(`Parsed ${rows.length} agents from ${request.url}`);
       },
-    };
-    // Only attach proxyConfiguration if present
-    const crawler = new PlaywrightCrawler({
-      ...crawlerOpts,
-      ...(proxyConfiguration ? { proxyConfiguration } : {}),
     });
 
     await crawler.run();
-
     const items = await Dataset.getData();
     const unique = dedupeBy(items.items, (x) => x.name?.toLowerCase());
     await Actor.setValue('PHASE1_NAMES.json', unique, { contentType: 'application/json' });
     await Actor.setValue('PHASE1_NAMES.csv', toCsv(unique, ['name', 'city', 'source']), { contentType: 'text/csv' });
-
-    log.info(`Phase 1 done. Names: ${unique.length}. Download from Key-Value store: PHASE1_NAMES.csv`);
+    log.info(`Phase 1 done. Names: ${unique.length}.`);
     return;
   }
 
@@ -108,9 +98,10 @@ await Actor.main(async () => {
       }
     }
 
-    const cheerioOpts = {
+    const cheerioCrawler = new CheerioCrawler({
       requestQueue: enrichQueue,
       maxConcurrency: 5,
+      ...(proxyConfiguration ? { proxyConfiguration } : {}),
       async requestHandler({ request, $, enqueueLinks }) {
         const { person } = request.userData;
         const pageText = $('body').text();
@@ -141,10 +132,6 @@ await Actor.main(async () => {
           }
         }
       },
-    };
-    const cheerioCrawler = new CheerioCrawler({
-      ...cheerioOpts,
-      ...(proxyConfiguration ? { proxyConfiguration } : {}),
     });
 
     await cheerioCrawler.run();
@@ -153,7 +140,23 @@ await Actor.main(async () => {
     const consolidated = consolidateByName(items);
     await Actor.setValue('PHASE2_ENRICHED.json', consolidated, { contentType: 'application/json' });
     await Actor.setValue('PHASE2_ENRICHED.csv', toCsv(consolidated, ['name', 'phone', 'email', 'sourceUrl']), { contentType: 'text/csv' });
-    log.info(`Phase 2 done. Enriched ${consolidated.length} contacts. Download PHASE2_ENRICHED.csv`);
+
+    if (brevoExport) {
+      const brevoRows = consolidated.map((r) => {
+        const { first, last } = splitName(r.name || '');
+        return {
+          EMAIL: (r.email || '').toLowerCase(),
+          SMS: toE164US(r.phone || ''),
+          FIRSTNAME: first,
+          LASTNAME: last,
+        };
+      });
+      const brevoCsv = toCsv(brevoRows, ['EMAIL', 'SMS', 'FIRSTNAME', 'LASTNAME']);
+      await Actor.setValue(brevoFileName, brevoCsv, { contentType: 'text/csv' });
+      log.info(`Brevo CSV written: ${brevoFileName} (${brevoRows.length} rows)`);
+    }
+
+    log.info(`Phase 2 done. Enriched ${consolidated.length} contacts.`);
   }
 });
 
