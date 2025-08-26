@@ -37,7 +37,9 @@
         "realtor",
         "homes",
         "coldwellbanker",
-        "compass"
+        "compass",
+        "exp",
+        "united"
       ],
       "description": "Which agent directories to crawl during Phase 1 (discover)."
     },

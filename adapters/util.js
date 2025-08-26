@@ -1,7 +1,7 @@
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export function toTitleCase(str = '') {
-  return str
+  return String(str)
     .toLowerCase()
     .replace(/\b([a-z])(\w*)/g, (m, a, b) => a.toUpperCase() + b);
 }
@@ -9,7 +9,7 @@ export function toTitleCase(str = '') {
 export const dedupeBy = (arr, keyFn) => {
   const seen = new Set();
   const out = [];
-  for (const item of arr) {
+  for (const item of arr || []) {
     const key = keyFn(item);
     if (!key) continue;
     if (seen.has(key)) continue;
@@ -39,7 +39,7 @@ export function normalizePhone(p) {
 export function toE164US(p) {
   if (!p) return '';
   const digits = String(p).replace(/\D/g, '');
-  if (digits.length == 11 && digits.startsWith('1')) return '+' + digits;
+  if (digits.length === 11 && digits.startsWith('1')) return '+' + digits;
   if (digits.length >= 10) return '+1' + digits.slice(-10);
   return '';
 }

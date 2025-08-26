@@ -1,18 +1,21 @@
-
 import { Actor, log } from 'apify';
 import { CheerioCrawler, Dataset, RequestQueue } from 'crawlee';
 import * as cheerio from 'cheerio';
-import { EMAIL_RE, PHONE_RE, normalizePhone, dedupeBy, toTitleCase } from './adapters/util.js';
+import { EMAIL_RE, PHONE_RE, normalizePhone, dedupeBy, toTitleCase, splitName, toE164US } from './adapters/util.js';
 import { realtorSeeds, parseRealtorList } from './adapters/realtor.js';
 import { homesSeeds, parseHomesList } from './adapters/homes.js';
 import { coldwellSeeds, parseColdwell } from './adapters/coldwellbanker.js';
 import { compassSeeds, parseCompass } from './adapters/compass.js';
+import { expSeeds, parseExpList } from './adapters/exp.js';
+import { unitedSeeds, parseUnited } from './adapters/unitedrealestategallery.js';
 
 const SOURCE_MAP = {
   realtor: { seeds: realtorSeeds, parse: parseRealtorList },
   homes: { seeds: homesSeeds, parse: parseHomesList },
   coldwellbanker: { seeds: coldwellSeeds, parse: parseColdwell },
   compass: { seeds: compassSeeds, parse: parseCompass },
+  exp: { seeds: expSeeds, parse: parseExpList },
+  united: { seeds: unitedSeeds, parse: parseUnited },
 };
 
 await Actor.main(async () => {
@@ -21,7 +24,7 @@ await Actor.main(async () => {
     phase = 'discover',
     city = 'Jacksonville, FL',
     limitPerSource = 250,
-    sources = ['realtor', 'homes', 'coldwellbanker', 'compass'],
+    sources = ['realtor', 'homes', 'coldwellbanker', 'compass', 'exp', 'united'],
     namesCsvUrl,
     maxPagesPerName = 6,
     proxyGroups = [],
@@ -50,13 +53,14 @@ await Actor.main(async () => {
       requestHandlerTimeoutSecs: 60,
       ...(proxyConfiguration ? { proxyConfiguration } : {}),
       async requestHandler({ request, body }) {
-        // Use cheerio directly on body for speed/reliability
         const $ = cheerio.load(body || '');
         let rows = [];
         if (request.label === 'REALTOR_LIST') rows = SOURCE_MAP.realtor.parse($);
         if (request.label === 'HOMES_LIST') rows = SOURCE_MAP.homes.parse($);
         if (request.label === 'COLDWELL_LIST') rows = SOURCE_MAP.coldwellbanker.parse($);
         if (request.label === 'COMPASS_LIST') rows = SOURCE_MAP.compass.parse($);
+        if (request.label === 'EXP_LIST') rows = SOURCE_MAP.exp.parse($);
+        if (request.label === 'UNITED_LIST') rows = SOURCE_MAP.united.parse($);
         for (const r of rows) await Dataset.pushData({ name: r.name, city, source: r.source });
         log.info(`Parsed ${rows.length} agents from ${request.url}`);
       },
@@ -106,8 +110,7 @@ await Actor.main(async () => {
       requestQueue: enrichQueue,
       maxConcurrency: 5,
       ...(proxyConfiguration ? { proxyConfiguration } : {}),
-      async requestHandler({ request, $ , enqueueLinks, body }) {
-        // Ensure $ exists even if auto-parsing failed
+      async requestHandler({ request, $, enqueueLinks, body }) {
         const _$ = $ || cheerio.load(body || '');
         const pageText = _$('#root').text() + ' ' + _$('#__next').text() + ' ' + _$('.content').text() + ' ' + _$('.main').text() + ' ' + _$('body').text();
         const emails = [...new Set((pageText.match(EMAIL_RE) || []).map((e) => e.toLowerCase()))];
@@ -149,12 +152,12 @@ await Actor.main(async () => {
 
     if (brevoExport) {
       const brevoRows = consolidated.map((r) => {
-        const [first, ...last] = String(r.name || '').trim().split(/\s+/);
+        const { first, last } = splitName(r.name || '');
         return {
           EMAIL: (r.email || '').toLowerCase(),
           SMS: toE164US(r.phone || ''),
-          FIRSTNAME: first || '',
-          LASTNAME: last.join(' ') || '',
+          FIRSTNAME: first,
+          LASTNAME: last,
           SOURCEURL: r.sourceUrl || ''
         };
       });
@@ -233,4 +236,3 @@ function absolutize(base, href) {
     return null;
   }
 }
-
