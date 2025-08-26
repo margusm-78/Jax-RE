@@ -1,4 +1,3 @@
-// Use the Actor API with apify v3+
 import { Actor, log } from 'apify';
 import { PlaywrightCrawler, Dataset, RequestQueue, CheerioCrawler } from 'crawlee';
 import * as cheerio from 'cheerio';
@@ -35,7 +34,6 @@ await Actor.main(async () => {
     : null;
 
   if (phase === 'discover') {
-    // Collect names from configured adapters
     const q = await RequestQueue.open();
     for (const src of sources) {
       const mod = SOURCE_MAP[src];
@@ -45,10 +43,9 @@ await Actor.main(async () => {
       }
     }
 
-    const crawler = new PlaywrightCrawler({
+    const crawlerOpts = {
       requestQueue: q,
       maxConcurrency: 2,
-      proxyConfiguration,
       navigationTimeoutSecs: 45,
       async requestHandler({ request, page }) {
         const html = await page.content();
@@ -65,11 +62,15 @@ await Actor.main(async () => {
 
         log.info(`Parsed ${rows.length} agents from ${request.url}`);
       },
+    };
+    // Only attach proxyConfiguration if present
+    const crawler = new PlaywrightCrawler({
+      ...crawlerOpts,
+      ...(proxyConfiguration ? { proxyConfiguration } : {}),
     });
 
     await crawler.run();
 
-    // Dedupe + save a clean CSV into Key-Value Store for easy download
     const items = await Dataset.getData();
     const unique = dedupeBy(items.items, (x) => x.name?.toLowerCase());
     await Actor.setValue('PHASE1_NAMES.json', unique, { contentType: 'application/json' });
@@ -80,7 +81,6 @@ await Actor.main(async () => {
   }
 
   if (phase === 'enrich') {
-    // Load names from Phase 1 dataset or provided CSV URL
     let names = [];
     if (namesCsvUrl) {
       const { body } = await Actor.utils.requestAsBrowser({ url: namesCsvUrl });
@@ -98,21 +98,19 @@ await Actor.main(async () => {
       }
     }
 
-    // Prepare a small crawler that visits likely pages per name & extracts phones/emails
     const enrichQueue = await RequestQueue.open('ENRICH_Q');
 
     for (const rec of names) {
-      const person = rec.name || rec; // allow bare names
+      const person = rec.name || rec;
       const queries = buildQueries(person, city);
       for (const q of queries) {
         await enrichQueue.addRequest({ url: q, label: 'SEARCH', userData: { person } });
       }
     }
 
-    const cheerioCrawler = new CheerioCrawler({
+    const cheerioOpts = {
       requestQueue: enrichQueue,
       maxConcurrency: 5,
-      proxyConfiguration,
       async requestHandler({ request, $, enqueueLinks }) {
         const { person } = request.userData;
         const pageText = $('body').text();
@@ -128,7 +126,6 @@ await Actor.main(async () => {
           });
         }
 
-        // From search pages, enqueue first few organic links
         if (isSearchUrl(request.url)) {
           const hrefs = [];
           $('a').each((_, a) => {
@@ -144,11 +141,14 @@ await Actor.main(async () => {
           }
         }
       },
+    };
+    const cheerioCrawler = new CheerioCrawler({
+      ...cheerioOpts,
+      ...(proxyConfiguration ? { proxyConfiguration } : {}),
     });
 
     await cheerioCrawler.run();
 
-    // Dedupe by name and prefer rows that have an email
     const { items } = await Dataset.getData();
     const consolidated = consolidateByName(items);
     await Actor.setValue('PHASE2_ENRICHED.json', consolidated, { contentType: 'application/json' });
