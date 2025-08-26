@@ -1,7 +1,7 @@
-import Apify, { log } from 'apify';
+// Use the Actor API with apify v3+
+import { Actor, log } from 'apify';
 import { PlaywrightCrawler, Dataset, RequestQueue, CheerioCrawler } from 'crawlee';
 import * as cheerio from 'cheerio';
-import { createWriteStream } from 'node:fs';
 import { EMAIL_RE, PHONE_RE, normalizePhone, dedupeBy, toTitleCase } from './adapters/util.js';
 import { realtorSeeds, parseRealtorList } from './adapters/realtor.js';
 import { homesSeeds, parseHomesList } from './adapters/homes.js';
@@ -15,8 +15,8 @@ const SOURCE_MAP = {
   compass: { seeds: compassSeeds, parse: parseCompass },
 };
 
-await Apify.main(async () => {
-  const input = await Apify.getInput();
+await Actor.main(async () => {
+  const input = await Actor.getInput();
   const {
     phase = 'discover',
     city = 'Jacksonville, FL',
@@ -31,7 +31,7 @@ await Apify.main(async () => {
 
   log.info(`Phase: ${phase}`);
   const proxyConfiguration = proxyGroups?.length
-    ? await Apify.createProxyConfiguration({ groups: proxyGroups })
+    ? await Actor.createProxyConfiguration({ groups: proxyGroups })
     : null;
 
   if (phase === 'discover') {
@@ -50,7 +50,7 @@ await Apify.main(async () => {
       maxConcurrency: 2,
       proxyConfiguration,
       navigationTimeoutSecs: 45,
-      async requestHandler({ request, page, enqueueLinks, response }) {
+      async requestHandler({ request, page }) {
         const html = await page.content();
         const $ = cheerio.load(html);
         let rows = [];
@@ -72,8 +72,8 @@ await Apify.main(async () => {
     // Dedupe + save a clean CSV into Key-Value Store for easy download
     const items = await Dataset.getData();
     const unique = dedupeBy(items.items, (x) => x.name?.toLowerCase());
-    await Apify.setValue('PHASE1_NAMES.json', unique, { contentType: 'application/json' });
-    await Apify.setValue('PHASE1_NAMES.csv', toCsv(unique, ['name', 'city', 'source']), { contentType: 'text/csv' });
+    await Actor.setValue('PHASE1_NAMES.json', unique, { contentType: 'application/json' });
+    await Actor.setValue('PHASE1_NAMES.csv', toCsv(unique, ['name', 'city', 'source']), { contentType: 'text/csv' });
 
     log.info(`Phase 1 done. Names: ${unique.length}. Download from Key-Value store: PHASE1_NAMES.csv`);
     return;
@@ -83,11 +83,11 @@ await Apify.main(async () => {
     // Load names from Phase 1 dataset or provided CSV URL
     let names = [];
     if (namesCsvUrl) {
-      const { body } = await Apify.utils.requestAsBrowser({ url: namesCsvUrl });
+      const { body } = await Actor.utils.requestAsBrowser({ url: namesCsvUrl });
       names = parseNamesCsv(body);
       log.info(`Loaded ${names.length} names from provided CSV URL.`);
     } else {
-      const stored = await Apify.getValue('PHASE1_NAMES.json');
+      const stored = await Actor.getValue('PHASE1_NAMES.json');
       if (stored?.length) {
         names = stored;
         log.info(`Loaded ${names.length} names from PHASE1_NAMES.json`);
@@ -151,8 +151,8 @@ await Apify.main(async () => {
     // Dedupe by name and prefer rows that have an email
     const { items } = await Dataset.getData();
     const consolidated = consolidateByName(items);
-    await Apify.setValue('PHASE2_ENRICHED.json', consolidated, { contentType: 'application/json' });
-    await Apify.setValue('PHASE2_ENRICHED.csv', toCsv(consolidated, ['name', 'phone', 'email', 'sourceUrl']), { contentType: 'text/csv' });
+    await Actor.setValue('PHASE2_ENRICHED.json', consolidated, { contentType: 'application/json' });
+    await Actor.setValue('PHASE2_ENRICHED.csv', toCsv(consolidated, ['name', 'phone', 'email', 'sourceUrl']), { contentType: 'text/csv' });
     log.info(`Phase 2 done. Enriched ${consolidated.length} contacts. Download PHASE2_ENRICHED.csv`);
   }
 });
@@ -165,7 +165,6 @@ function consolidateByName(items = []) {
     const prev = by.get(key);
     if (!prev) by.set(key, it);
     else {
-      // Prefer entries with email, then phone
       const score = (x) => (x?.email ? 2 : 0) + (x?.phone ? 1 : 0);
       by.set(key, score(it) > score(prev) ? it : prev);
     }
@@ -191,15 +190,13 @@ function parseNamesCsv(body = '') {
   const first = lines[0].split(',');
   const nameIdx = first.findIndex((h) => /name/i.test(h));
   if (nameIdx >= 0) return lines.slice(1).map((ln) => ({ name: ln.split(',')[nameIdx] }));
-  // One name per line fallback
   return lines.map((ln) => ({ name: ln.trim() })).filter((x) => x.name);
 }
 
 function buildQueries(name, city) {
   const enc = encodeURIComponent;
   const q = `${name} ${city} realtor email phone`;
-  // Use direct site searches that typically expose contact info without heavy scripting
-  const targets = [
+  return [
     `https://duckduckgo.com/?q=${enc(q)}`,
     `https://duckduckgo.com/?q=${enc(`${name} ${city} site:facebook.com`)}`,
     `https://duckduckgo.com/?q=${enc(`${name} ${city} site:instagram.com`)}`,
@@ -209,7 +206,6 @@ function buildQueries(name, city) {
     `https://duckduckgo.com/?q=${enc(`${name} ${city} site:compass.com`)}`,
     `https://duckduckgo.com/?q=${enc(`${name} ${city} contact email`)}`
   ];
-  return targets;
 }
 
 function isSearchUrl(u) {
@@ -223,7 +219,7 @@ function isNoise(u) {
 function absolutize(base, href) {
   try {
     return new URL(href, base).toString();
-  } catch (e) {
+  } catch {
     return null;
   }
 }
